@@ -1,0 +1,427 @@
+// K-LIMS Database Schema - KOLAS 17025 Compliant
+// SQLite Version (No Enums)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// ============================================
+// Customer Management
+// ============================================
+
+model Customer {
+  id           String   @id @default(cuid())
+  name         String
+  company      String
+  email        String
+  phone        String
+  address      String
+  contactPerson String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  testRequests TestRequest[]
+  invoices     Invoice[]
+}
+
+// ============================================
+// Test Request Workflow
+// ============================================
+
+model TestRequest {
+  id              String   @id @default(cuid())
+  requestId       String   @unique
+  customerId      String
+  status          String   @default("CONSULTATION") // CONSULTATION, REQUESTED, RECEIVED, IN_PROGRESS, COMPLETED, CERTIFIED, INVOICED, PAID
+  requestDate     DateTime @default(now())
+  consultationDate DateTime?
+  receivedDate    DateTime?
+  completedDate   DateTime?
+  certifiedDate   DateTime?
+  
+  // Test Details
+  testType        String
+  testItems       String
+  purpose         String?
+  deadline        DateTime?
+  
+  // Sample Info
+  sampleName      String
+  sampleQty       Int
+  sampleCondition String?
+  
+  // Pricing
+  totalPrice      Float    @default(0)
+  vat             Float    @default(0)
+  discount        Float    @default(0)
+  finalPrice      Float    @default(0)
+  
+  // Notes
+  notes           String?
+  internalNotes   String?
+  
+  customer        Customer   @relation(fields: [customerId], references: [id])
+  invoice         Invoice?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([requestId])
+  @@index([customerId])
+  @@index([status])
+}
+
+// ============================================
+// User Management & Authentication
+// ============================================
+
+model User {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  password       String
+  name           String
+  role           String   @default("TESTER") // ADMIN, APPROVER, REVIEWER, TESTER, QUALITY_MANAGER
+  status         String   @default("ACTIVE") // ACTIVE, INACTIVE, SUSPENDED
+  department     String?
+  position       String?
+  qualifications String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  lastLoginAt    DateTime?
+
+  assignedTests        TestAssignment[] @relation("AssignedTests")
+  reviewedTests        TestRecord[]     @relation("ReviewedBy")
+  approvedCertificates Certificate[]    @relation("ApprovedBy")
+
+  @@index([email])
+  @@index([role])
+}
+
+// ============================================
+// Sample Management
+// ============================================
+
+model Sample {
+  id               String   @id @default(cuid())
+  sampleId         String   @unique
+  barcode          String   @unique
+  qrCode           String?
+  name             String
+  description      String?
+  receivedAt       DateTime @default(now())
+  receivedBy       String
+  clientName       String
+  clientInfo       String?
+  status           String   @default("RECEIVED")
+  storageCondition String?
+  dueDate          DateTime?
+  metadata         String?
+  testRequestId    String?
+
+  testRecords TestRecord[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sampleId])
+  @@index([status])
+}
+
+// ============================================
+// Equipment Management
+// ============================================
+
+model Equipment {
+  id               String   @id @default(cuid())
+  equipmentId      String   @unique
+  name             String
+  model            String?
+  manufacturer     String?
+  serialNumber     String?
+  status           String   @default("IDLE") // RUN, IDLE, DOWN, CALIBRATION, RETIRED
+  location         String?
+  purchaseDate     DateTime?
+  calibrationDue   DateTime?
+  calibrationCycle Int?
+  lastCalibration  DateTime?
+  nextCalibration  DateTime?
+
+  testRecords     TestRecord[]
+  maintenanceLogs MaintenanceLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([equipmentId])
+  @@index([status])
+}
+
+model MaintenanceLog {
+  id          String   @id @default(cuid())
+  equipmentId String
+  type        String
+  description String
+  performedBy String
+  performedAt DateTime @default(now())
+  nextDue     DateTime?
+  attachments String
+  cost        Float?
+
+  equipment Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([equipmentId])
+}
+
+// ============================================
+// Test Workflow & Records
+// ============================================
+
+model TestAssignment {
+  id           String   @id @default(cuid())
+  testRecordId String   @unique
+  assignedTo   String
+  assignedBy   String
+  assignedAt   DateTime @default(now())
+  dueDate      DateTime?
+  status       String   @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED, REVIEW, REJECTED
+  comments     String?
+
+  testRecord TestRecord @relation(fields: [testRecordId], references: [id], onDelete: Cascade)
+  assignee   User       @relation("AssignedTests", fields: [assignedTo], references: [id])
+
+  @@index([assignedTo])
+  @@index([status])
+}
+
+model TestRecord {
+  id                      String   @id @default(cuid())
+  sampleId                String
+  testId                  String
+  testName                String
+  method                  String
+  status                  String   @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED, REVIEW, REJECTED
+  rawData                 String?
+  calculatedData          String?
+  environmentalConditions String?
+  uncertainty             Float?
+  uncertaintyFormula      String?
+  equipmentId             String?
+  crmId                   String?
+  startedAt               DateTime?
+  completedAt             DateTime?
+  reviewedAt              DateTime?
+  reviewedBy              String?
+
+  sample     Sample         @relation(fields: [sampleId], references: [id])
+  equipment  Equipment?     @relation(fields: [equipmentId], references: [id])
+  reviewer   User?          @relation("ReviewedBy", fields: [reviewedBy], references: [id])
+  assignment TestAssignment?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sampleId])
+  @@index([testId])
+  @@index([status])
+}
+
+// ============================================
+// Certificate Management
+// ============================================
+
+model CertificateTemplate {
+  id                   String   @id @default(cuid())
+  name                 String
+  version              String   @default("1.0")
+  content              String
+  isActive             Boolean  @default(false)
+  hasKolasLogo         Boolean  @default(true)
+  hasAccreditationMark Boolean  @default(true)
+
+  certificates Certificate[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+}
+
+model Certificate {
+  id               String   @id @default(cuid())
+  certificateNo    String   @unique
+  testRecordIds    String
+  templateId       String
+  status           String   @default("DRAFT") // DRAFT, PENDING, APPROVED, ISSUED, REVOKED
+  content          String
+  digitalSignature String?
+  watermark        Boolean  @default(true)
+  qrCode           String?
+  issuedAt         DateTime?
+  approvedAt       DateTime?
+  approvedBy       String?
+
+  template CertificateTemplate @relation(fields: [templateId], references: [id])
+  approver User?               @relation("ApprovedBy", fields: [approvedBy], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([certificateNo])
+  @@index([status])
+}
+
+// ============================================
+// CRM Management
+// ============================================
+
+model CRM {
+  id               String   @id @default(cuid())
+  crmId            String   @unique
+  name             String
+  lotNumber        String
+  manufacturer     String
+  expiryDate       DateTime
+  quantity         Int
+  unit             String
+  minQuantity      Int
+  msdsUrl          String?
+  storageCondition String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([crmId])
+  @@index([expiryDate])
+}
+
+// ============================================
+// Invoice & Payment
+// ============================================
+
+model Invoice {
+  id              String   @id @default(cuid())
+  invoiceNo       String   @unique
+  testRequestId   String   @unique
+  customerId      String
+  issueDate       DateTime @default(now())
+  dueDate         DateTime
+  status          String   @default("UNPAID") // UNPAID, PARTIAL, PAID, OVERDUE
+  
+  // Amounts
+  subtotal        Float    @default(0)
+  vat             Float    @default(0)
+  discount        Float    @default(0)
+  total           Float    @default(0)
+  paidAmount      Float    @default(0)
+  
+  // Payment
+  paymentDate     DateTime?
+  paymentMethod   String?
+  paymentNotes    String?
+  
+  customer        Customer   @relation(fields: [customerId], references: [id])
+  testRequest     TestRequest @relation(fields: [testRequestId], references: [id])
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([invoiceNo])
+  @@index([testRequestId])
+  @@index([status])
+}
+
+// ============================================
+// Audit Trail
+// ============================================
+
+model AuditTrail {
+  id         String   @id @default(cuid())
+  timestamp  DateTime @default(now())
+  userId     String
+  action     String   // CREATE, READ, UPDATE, DELETE, APPROVE, REJECT, EXPORT, LOGIN, LOGOUT
+  entityType String
+  entityId   String
+  changes    String?
+  reason     String?
+  ipAddress  String?
+  userAgent  String?
+
+  createdAt DateTime @default(now())
+
+  @@index([timestamp])
+  @@index([userId])
+  @@index([entityType])
+  @@index([action])
+}
+
+// ============================================
+// Quality Management
+// ============================================
+
+model NonConformity {
+  id               String   @id @default(cuid())
+  ncId             String   @unique
+  title            String
+  description      String
+  severity         String
+  status           String   @default("OPEN") // OPEN, INVESTIGATING, CORRECTIVE_ACTION, VERIFIED, CLOSED
+  detectedAt       DateTime @default(now())
+  detectedBy       String
+  assignedTo       String?
+  rootCause        String?
+  correctiveAction String?
+  verifiedAt       DateTime?
+  verifiedBy       String?
+  attachments      String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ncId])
+  @@index([status])
+}
+
+// ============================================
+// Proficiency Testing
+// ============================================
+
+model ProficiencyTest {
+  id          String   @id @default(cuid())
+  ptId        String   @unique
+  programName String
+  provider    String
+  sampleId    String
+  testItems   String
+  result      String?
+  evaluation  String?
+  status      String   @default("PENDING")
+  dueDate     DateTime?
+  submittedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ptId])
+}
+
+// ============================================
+// System Configuration
+// ============================================
+
+model SystemConfig {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  category  String?
+  updatedAt DateTime @updatedAt
+
+  @@index([category])
+}
